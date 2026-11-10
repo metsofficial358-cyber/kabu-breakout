@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* 上昇・下落色（日本式：上昇=赤／下落=青）。data-colors="inverted" で反転 */
+:root {
+  --up: #d1242f;
+  --down: #1f6feb;
+  --hl-bg: #fff6d6;
+  --hl-border: #f0c94a;
+  --hl-text: #5c4300;
+}
+.dark {
+  --up: #ff6b6b;
+  --down: #58a6ff;
+  --hl-bg: #3a300f;
+  --hl-border: #8a6d1a;
+  --hl-text: #ffe08a;
+}
+[data-colors="inverted"] {
+  --up: #1f6feb;
+  --down: #d1242f;
+}
+.dark[data-colors="inverted"] {
+  --up: #58a6ff;
+  --down: #ff6b6b;
+}
+
+@theme inline {
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-hl-bg: var(--hl-bg);
+  --color-hl-border: var(--hl-border);
+  --color-hl-text: var(--hl-text);
+  --font-sans: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", Meiryo, system-ui, sans-serif;
+}
+
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+body {
+  font-feature-settings: "tnum" 1, "palt" 0;
+}
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* スライダー */
+input[type="range"] {
+  accent-color: #d97706;
+}
