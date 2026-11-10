@@ -18,11 +18,6 @@ export default function StockCard({ item, runDate }: { item: ScreenItem; runDate
         <h3 className="min-w-0 flex-1 truncate text-sm font-medium" title={item.name ?? ""}>
           {item.name}
         </h3>
-        {item.is_foreign && (
-          <span className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-inset ring-slate-300 dark:text-slate-300 dark:ring-slate-600">
-            外国株
-          </span>
-        )}
         <MarketBadge market={item.market} />
       </div>
 

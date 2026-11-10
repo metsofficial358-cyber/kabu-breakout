@@ -1,4 +1,5 @@
 // フィルタ状態 ⇄ URL クエリ。既定値と同じ項目は URL に書かない（短く共有しやすくするため）。
+// ETF・ETN／REIT等／PRO Market等／外国株は画面からは含められない（API の既定で常に除外）。
 import type { Filters, MarketTab, Order, SortKey, View } from "./types";
 
 export const DEFAULT_FILTERS: Filters = {
@@ -9,10 +10,6 @@ export const DEFAULT_FILTERS: Filters = {
   above_ma25: true,
   above_ma75: true,
   min_turnover: 100_000_000,
-  include_etf: false,
-  include_reit: false,
-  include_other: false,
-  include_foreign: false,
   exclude_pinned: true,
   include_updated: false,
   sort: "dist",
@@ -54,10 +51,6 @@ export function parseFilters(sp: URLSearchParams): Filters {
     above_ma25: bool(sp.get("above_ma25"), d.above_ma25),
     above_ma75: bool(sp.get("above_ma75"), d.above_ma75),
     min_turnover: TURNOVER_OPTIONS.some((o) => o.value === turnover) ? turnover : d.min_turnover,
-    include_etf: bool(sp.get("include_etf"), d.include_etf),
-    include_reit: bool(sp.get("include_reit"), d.include_reit),
-    include_other: bool(sp.get("include_other"), d.include_other),
-    include_foreign: bool(sp.get("include_foreign"), d.include_foreign),
     exclude_pinned: bool(sp.get("exclude_pinned"), d.exclude_pinned),
     include_updated: bool(sp.get("include_updated"), d.include_updated),
     sort: SORTS.includes(sort) ? sort : d.sort,

@@ -114,25 +114,6 @@ export default function FilterBar({ filters: f, onChange }: Props) {
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-        <span className="mr-1 text-slate-600 dark:text-slate-400">対象に含める</span>
-        <Chip checked={f.include_etf} onChange={(v) => onChange({ include_etf: v })} label="ETF・ETN" />
-        <Chip checked={f.include_reit} onChange={(v) => onChange({ include_reit: v })} label="REIT・インフラファンド" />
-        <Chip
-          checked={f.include_other}
-          onChange={(v) => onChange({ include_other: v })}
-          label="PRO Market・出資証券"
-          hint="東証の3市場（プライム・スタンダード・グロース）以外の区分"
-        />
-        <Chip
-          checked={f.include_foreign}
-          onChange={(v) => onChange({ include_foreign: v })}
-          label="外国株"
-          hint="東証に上場している外国会社の株式（JDR を含む）"
-        />
-        <span className="text-xs text-slate-400 dark:text-slate-500">（既定はすべて除外。ETF 等は「全市場」タブのときに対象）</span>
-      </div>
-
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
         <span className="text-slate-600 dark:text-slate-400">並び替え</span>
         <select
@@ -168,25 +149,6 @@ export default function FilterBar({ filters: f, onChange }: Props) {
         )}
       </div>
     </section>
-  );
-}
-
-function Chip({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={checked}
-      title={hint}
-      onClick={() => onChange(!checked)}
-      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
-        checked
-          ? "border-amber-500 bg-amber-50 text-amber-800 dark:border-amber-500 dark:bg-amber-950/40 dark:text-amber-300"
-          : "border-slate-300 text-slate-500 hover:border-slate-400 dark:border-slate-700 dark:text-slate-400"
-      }`}
-    >
-      <span aria-hidden>{checked ? "✓" : "+"}</span>
-      {label}
-    </button>
   );
 }
 

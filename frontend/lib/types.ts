@@ -74,10 +74,6 @@ export interface Filters {
   above_ma25: boolean;
   above_ma75: boolean;
   min_turnover: number;
-  include_etf: boolean;
-  include_reit: boolean;
-  include_other: boolean;
-  include_foreign: boolean;
   exclude_pinned: boolean;
   include_updated: boolean;
   sort: SortKey;
