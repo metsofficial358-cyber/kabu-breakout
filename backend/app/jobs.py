@@ -110,11 +110,15 @@ class JobRunner:
         from .providers.yfinance_provider import YFinanceProvider
         return YFinanceProvider()
 
-    def recover_interrupted(self) -> None:
-        """プロセスが落ちて running のまま一定時間以上残った実行を failed にする。"""
+    def recover_interrupted(self, all_running: bool = False) -> None:
+        """プロセスが落ちて running のまま残った実行を failed にする。
+        all_running=True（API サーバーの起動時）は、途中で止められた実行をすべて解除する。
+        既定（CLI）は、API サーバー側で実行中かもしれないので一定時間以上古いものだけ。"""
+        cond = [Run.status == "running"]
+        if not all_running:
+            cond.append(Run.started_at < now_jst() - RUN_STALE_AFTER)
         with self.session_factory() as db:
-            db.execute(update(Run).where(Run.status == "running", Run.started_at < now_jst() - RUN_STALE_AFTER)
-                       .values(status="failed", finished_at=now_jst()))
+            db.execute(update(Run).where(*cond).values(status="failed", finished_at=now_jst()))
             db.commit()
 
     # ---- 起動

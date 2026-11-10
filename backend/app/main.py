@@ -65,7 +65,7 @@ cache = ResultCache()
 async def lifespan(app: FastAPI):  # noqa: ANN201
     global _scheduler
     init_db()
-    runner.recover_interrupted()
+    runner.recover_interrupted(all_running=True)  # 更新の途中でコンテナを止めた場合も、すぐ再実行できるように
     runner.on_finished.append(cache.clear)
     if get_settings().scheduler_enabled:
         from .scheduler import create_scheduler

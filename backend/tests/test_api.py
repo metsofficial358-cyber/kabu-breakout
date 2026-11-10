@@ -234,3 +234,19 @@ def test_screen_is_fast_with_full_universe(client):
         assert r.status_code == 200
     per = (time.perf_counter() - t0) / 5
     assert per < 1.0, per
+
+
+def test_restart_clears_interrupted_run():
+    """更新の途中でアプリを止めて再起動しても、すぐに「更新」できる。"""
+    init_db()
+    with SessionLocal() as db:
+        db.execute(delete(Run))
+        db.add(Run(run_date=T, started_at=jobs.now_jst(), status="running"))   # 途中で止まった実行
+        db.commit()
+    runner.recover_interrupted()                       # CLI 相当：直近のものは API 側で実行中かもしれないので残す
+    with SessionLocal() as db:
+        assert db.query(Run).filter_by(status="running").count() == 1
+    with TestClient(app):                              # API サーバーの起動
+        pass
+    with SessionLocal() as db:
+        assert db.query(Run).filter_by(status="running").count() == 0
