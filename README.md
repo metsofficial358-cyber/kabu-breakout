@@ -8,6 +8,7 @@
 
 - 毎営業日 18:00（JST）に全銘柄の日足を取得して指標を計算（約5分）
 - 条件（高値までの距離・出来高倍率・MA25/MA75・売買代金など）は画面で即時に変更でき、URL で共有可能
+- TOB（公開買付け）の買付価格に張り付いた銘柄、ETF・ETN、REIT、PRO Market 等、外国株は既定で除外（それぞれ切り替え可能）
 - カード表示（120日ローソク足＋出来高＋年初来高値ライン）／テーブル表示（60日スパークライン）
 - 手動更新ボタン（進捗表示・二重起動防止）、ダークモード、上昇／下落色の反転
 
@@ -135,6 +136,7 @@ npm start
 | `python -m app.batch universe` | JPX 銘柄一覧だけを取り込む |
 | `python -m app.batch fetch --sample 20` / `--codes 7203 6758` | 指定した銘柄の株価だけを取得する（動作確認用） |
 | `python -m app.batch screen [--date YYYY-MM-DD]` | 保存済みの株価から指標を計算して表示する（保存しない） |
+| `python -m app.batch rescreen [--date YYYY-MM-DD]` | 保存済みの株価から指標を計算し直して保存する（株価は取得しない。アップデート後や設定変更後に） |
 | `python -m app.batch init-db` | テーブルを作成する |
 
 Docker の場合は `docker compose exec backend python -m app.batch run` のように実行します。
@@ -160,6 +162,7 @@ Docker の場合は `docker compose exec backend python -m app.batch run` のよ
 | `REFETCH_BUSINESS_DAYS` | `10` | 2回目以降に取り直す直近の営業日数 |
 | `SPLIT_DETECT_THRESHOLD` | `0.01` | 分割とみなして全期間を取り直す終値のずれ（1%） |
 | `INITIAL_MIN_CALENDAR_DAYS` | `150` | 初回取得で最低限さかのぼる暦日（MA75 用） |
+| `PINNED_DAYS` / `PINNED_RANGE_PCT` | `20` / `1.0` | 「値動きの止まった銘柄」の判定：直近 20 営業日の値幅（最高値−最安値）が終値の 1.0% 未満 |
 | `VOL_AVG_DAYS` / `MA_SHORT` / `MA_LONG` / `TURNOVER_AVG_DAYS` / `MIN_HISTORY_DAYS` | `25` / `25` / `75` / `25` / `75` | 指標の日数（変えると画面の表記と合わなくなるので通常は変えない） |
 
 フロントエンドの環境変数は `BACKEND_URL`（既定 `http://localhost:8000`）だけです。
@@ -180,8 +183,23 @@ Docker の場合は `docker compose exec backend python -m app.batch run` のよ
 | 前日比 | `(close_T − close_T-1) / close_T-1 × 100` |
 | 25日平均売買代金 | T を含む直近 25 日の `close × volume` の平均 |
 | スコア | `(5 − dist_pct) × 10 + min(vol_ratio, 5) × 8 + (MA25 > MA75 ? 10 : 0)`（並び替え用） |
+| 20日値幅 `range20_pct` | T を含む直近 20 営業日の `(最高値 − 最安値) / close_T × 100` |
 
-既定の条件（すべて画面で変更可）：対象はプライム・スタンダード・グロース（ETF・REIT・PRO Market 等は除外）、`0 < dist_pct ≤ 5`、本日更新済みを除外、`vol_ratio ≥ 1.5`、`close > MA25` かつ `close > MA75`、25日平均売買代金 1 億円以上。上場から 75 営業日未満、T の出来高が 0、T の足がない銘柄は常に除外します。
+既定の条件（すべて画面で変更可）：
+
+| 条件 | 既定 |
+|---|---|
+| 市場 | プライム・スタンダード・グロース |
+| 高値までの距離 | `0 < dist_pct ≤ 5` |
+| 本日更新済み | 除外 |
+| 出来高急増 | `vol_ratio ≥ 1.5` |
+| トレンド | `close > MA25` かつ `close > MA75` |
+| 流動性 | 25日平均売買代金 1 億円以上 |
+| 値動きの止まった銘柄 | 除外（`range20_pct < 1.0`。TOB の買付価格への張り付き、社債型種類株式など） |
+| ETF・ETN／REIT・インフラファンド／PRO Market・出資証券 | それぞれ除外（「対象に含める」で個別に追加。「全市場」タブのときに対象） |
+| 外国株（JDR を含む） | 除外（JPX の区分が「〇〇（外国株式）」の銘柄） |
+
+上場から 75 営業日未満、T の出来高が 0、T の足がない銘柄は常に除外します。
 
 欠損日がある場合は、存在する営業日だけで計算します（MA などは「直近 N 本」）。
 
@@ -191,7 +209,7 @@ Docker の場合は `docker compose exec backend python -m app.batch run` のよ
 
 | メソッド・パス | 内容 |
 |---|---|
-| `GET /api/screen` | 条件で絞り込んだ一覧。`market=all\|prime\|standard\|growth`、`max_dist`、`min_vol_ratio`、`vol_filter`、`above_ma25`、`above_ma75`、`min_turnover`、`include_etf`、`include_updated`、`sort=dist\|vol_ratio\|change\|score`、`order=asc\|desc`、`limit`（既定 200）、`run_date=YYYY-MM-DD`（過去の実行日の結果）、`with_spark=true`（60 日分の終値を付ける）→ `{run_date, updated_at, count, items}`。`count` は `limit` をかける前の件数 |
+| `GET /api/screen` | 条件で絞り込んだ一覧。`market=all\|prime\|standard\|growth`、`max_dist`、`min_vol_ratio`、`vol_filter`、`above_ma25`、`above_ma75`、`min_turnover`、`include_etf`、`include_updated`、`sort=dist\|vol_ratio\|change\|score`、`order=asc\|desc`、`limit`（既定 200）、`run_date=YYYY-MM-DD`（過去の実行日の結果）、`include_reit`・`include_other`（PRO Market・出資証券）・`include_foreign`、`exclude_pinned`（既定 true）・`pinned_range_pct`、`with_spark=true`（60 日分の終値を付ける）→ `{run_date, updated_at, count, items}`。`count` は `limit` をかける前の件数 |
 | `GET /api/stocks/{code}/chart?days=120` | 日足 OHLCV と `ytd_high` / `ytd_high_date`（`run_date` も指定可） |
 | `POST /api/refresh` | 更新ジョブを非同期で開始（202）。実行中なら 409 と実行中の `run_id` |
 | `GET /api/refresh/status` | `{running, phase, processed, total, errors, status, message, ...}` |
@@ -236,7 +254,7 @@ cd backend
 .venv/bin/python -m pytest -q
 ```
 
-42 件。合成データで以下を検証しています：①高値の 3% 下は抽出 ②本日更新済みは除外 ③出来高 1.4 倍は除外 ④MA75 の下は除外 ⑤1〜3月は前年の高値を使う ⑥平均出来高に T を含めない ⑦欠損日・データ不足でも落ちない。ほかに営業日判定、差分取得と分割の検出、API（条件・ロック・進捗・データ未更新・再試行）、約 4,400 銘柄での応答速度。
+48 件。合成データで以下を検証しています：①高値の 3% 下は抽出 ②本日更新済みは除外 ③出来高 1.4 倍は除外 ④MA75 の下は除外 ⑤1〜3月は前年の高値を使う ⑥平均出来高に T を含めない ⑦欠損日・データ不足でも落ちない。ほかに値動きの止まった銘柄・ETF/REIT/PRO Market/外国株の除外、旧版 DB への列の追加、営業日判定、差分取得と分割の検出、API（条件・ロック・進捗・データ未更新・再試行）、約 4,400 銘柄での応答速度。
 
 フロントエンドの型チェック：
 
@@ -259,7 +277,8 @@ npm run lint
 
 **計算・表示**
 - Yahoo!ファイナンスの「年初来高値」欄は整数に丸めて表示されるため、呼値が 0.5 円・0.1 円の銘柄では 1 円未満の差が出ることがあります（35 銘柄で照合し、日付はすべて一致、値は 32 銘柄が完全に一致、3 銘柄が丸めの差）。
-- TOB（株式公開買付け）の対象になった銘柄は、価格が買付価格付近に張り付いたまま「高値まで数%・出来高増」として抽出されることがあります。チャートが急に跳ねた後に横ばいになっていれば、その可能性があります。
+- TOB（株式公開買付け）の対象になった銘柄は、価格が買付価格付近に張り付いたまま「高値まで数%・出来高増」になりがちです。既定では「直近 20 営業日の値幅が 1% 未満」の銘柄を除外して防いでいますが、発表から日が浅い（値幅にまだ発表前の値動きが含まれる）場合や、買付価格の近辺で多少動いている場合はすり抜けることがあります。逆に、値動きがごく小さい銘柄は TOB でなくても除外されます。
+- 対象は JPX「東証上場銘柄一覧」の銘柄だけです。名証・福証・札証にだけ上場している銘柄は、もともと含まれません。
 - 銘柄名は JPX 一覧の表記を NFKC 正規化しています（全角英数字は半角になります）。
 - テーブルの見出しクリックでの並び替えは、取得済みの行（最大 200 件）の中で行います。全件を対象にした並び替えはフィルタバーの「並び替え」を使ってください。
 
@@ -267,6 +286,7 @@ npm run lint
 - 認証はありません（ローカル利用が前提）。外部に公開しないでください。
 - SQLite・プロセス内のスケジューラ・プロセス内のロックを使う前提のため、バックエンドは 1 プロセス・1 ワーカーで動かしてください（CLI との同時実行は DB 上のロックで防いでいます）。
 - 過去の実行日の結果は API（`run_date`）で取得できますが、画面からは選べません。
+- 旧版の DB は起動時に列が自動で追加されます。追加した条件（20日値幅・外国株）は、次回の更新か `python -m app.batch rescreen` の後に有効になります（それまでは除外されません）。
 - 通知機能（メール・LINE など）はありません。
 - 株探・Yahoo!ファイナンスはリンク先としてだけ使い、スクレイピングはしていません。
 

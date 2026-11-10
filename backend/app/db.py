@@ -35,7 +35,21 @@ engine = make_engine()
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
+# 既存の DB に後から追加した列（create_all は既存テーブルに列を足さないため）
+ADDED_COLUMNS = {
+    "stocks": {"market_raw": "VARCHAR(64)"},
+    "screen_results": {"range20_pct": "FLOAT"},
+}
+
+
 def init_db(eng: Engine | None = None) -> None:
     from . import models  # noqa: F401  (テーブル登録)
 
-    Base.metadata.create_all(eng or engine)
+    eng = eng or engine
+    Base.metadata.create_all(eng)
+    with eng.begin() as conn:
+        for table, cols in ADDED_COLUMNS.items():
+            have = {r[1] for r in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
+            for col, typ in cols.items():
+                if col not in have:
+                    conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")

@@ -5,6 +5,7 @@
   python -m app.batch universe
   python -m app.batch fetch --sample 20 | --codes 7203 6758  # 株価だけ取得
   python -m app.batch screen [--date YYYY-MM-DD]             # 指標を計算して表示（保存しない）
+  python -m app.batch rescreen [--date YYYY-MM-DD]           # 保存済みの株価で指標を再計算して保存
 """
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ from sqlalchemy import func, select
 from .calendar_jp import is_business_day
 from .config import get_settings
 from .db import SessionLocal, init_db
-from .jobs import current_t, load_prices, runner
+from .jobs import current_t, load_prices, rescreen, runner
 from .models import DailyPrice, Stock
 from .prices import update_prices
 from .screener import CalcParams, ScreenParams, apply_filters, compute_all
@@ -105,6 +106,13 @@ def cmd_screen(args: argparse.Namespace) -> None:
     print(f"\n既定条件で該当 {len(hit)} 銘柄: {list(hit['code'])}")
 
 
+def _latest_run_date() -> date | None:
+    from .models import Run
+
+    with SessionLocal() as db:
+        return db.execute(select(func.max(Run.run_date)).where(Run.status == "success")).scalar()
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     p = argparse.ArgumentParser(prog="python -m app.batch")
@@ -119,6 +127,8 @@ def main() -> None:
     f.add_argument("--codes", nargs="*")
     sc = sub.add_parser("screen")
     sc.add_argument("--date")
+    rs = sub.add_parser("rescreen")
+    rs.add_argument("--date")
     args = p.parse_args()
 
     init_db()
@@ -134,6 +144,10 @@ def main() -> None:
         cmd_fetch(args)
     elif args.cmd == "screen":
         cmd_screen(args)
+    elif args.cmd == "rescreen":
+        t = date.fromisoformat(args.date) if args.date else _latest_run_date() or current_t()
+        with SessionLocal() as db:
+            print(f"T={t}: {rescreen(db, t)} 銘柄の指標を再計算して保存しました")
 
 
 if __name__ == "__main__":

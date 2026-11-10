@@ -22,6 +22,8 @@ class ScreenItem(BaseModel):
     turnover_avg25: float | None
     updated_today: bool | None
     score: float | None
+    range20_pct: float | None = None
+    is_foreign: bool = False
     spark: list[float] | None = None
 
 

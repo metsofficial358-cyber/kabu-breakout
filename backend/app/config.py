@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     ma_long: int = 75
     turnover_avg_days: int = 25
     min_history_days: int = 75
+    # 値動きが止まった銘柄（TOB の買付価格への張り付きなど）の判定：
+    # 直近 pinned_days 営業日の (最高値 - 最安値) / 終値 が pinned_range_pct % 未満
+    pinned_days: int = 20
+    pinned_range_pct: float = 1.0
 
     # --- スケジューラ ---
     scheduler_enabled: bool = True

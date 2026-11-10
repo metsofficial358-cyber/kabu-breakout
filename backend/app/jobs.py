@@ -63,6 +63,12 @@ def load_prices(db: Session, t: date) -> pd.DataFrame:
     return df
 
 
+def rescreen(db: Session, t: date) -> int:
+    """保存済みの株価から指標を計算し直して保存する（株価は取得しない）。"""
+    res = compute_all(load_prices(db, t), t, CalcParams.from_settings())
+    return save_results(db, t, res)
+
+
 def save_results(db: Session, t: date, res: pd.DataFrame) -> int:
     db.execute(delete(ScreenResult).where(ScreenResult.run_date == t))
     rows = []
@@ -149,7 +155,11 @@ class JobRunner:
             with self.session_factory() as db:
                 # 1) 銘柄一覧（空、または最終更新から一定日数たっていれば取り込み直す）
                 last_upd = db.execute(select(func.max(Stock.updated_at))).scalar()
-                if last_upd is None or now_jst() - last_upd > timedelta(days=s.universe_refresh_days):
+                # 旧版の DB（market_raw 列がまだ空）も取り込み直す
+                missing_raw = db.execute(select(func.count()).where(Stock.is_active.is_(True),
+                                                                    Stock.market_raw.is_(None))).scalar()
+                if (last_upd is None or missing_raw
+                        or now_jst() - last_upd > timedelta(days=s.universe_refresh_days)):
                     try:
                         log.info("universe: %s", refresh_universe(db))
                     except Exception as e:  # noqa: BLE001  既存の一覧があれば続行

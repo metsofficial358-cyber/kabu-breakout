@@ -13,6 +13,7 @@ class Stock(Base):
     code: Mapped[str] = mapped_column(String(8), primary_key=True)
     name: Mapped[str] = mapped_column(String(128))
     market: Mapped[str] = mapped_column(String(16), index=True)  # prime/standard/growth/etf/reit/other
+    market_raw: Mapped[str | None] = mapped_column(String(64))   # JPX の「市場・商品区分」そのまま（外国株の判定用）
     sector33: Mapped[str | None] = mapped_column(String(64))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime)
@@ -44,6 +45,7 @@ class ScreenResult(Base):
     ma25: Mapped[float | None] = mapped_column(Float)
     ma75: Mapped[float | None] = mapped_column(Float)
     turnover_avg25: Mapped[float | None] = mapped_column(Float)
+    range20_pct: Mapped[float | None] = mapped_column(Float)  # 直近20営業日の値幅（%）
     updated_today: Mapped[bool | None] = mapped_column(Boolean)
     score: Mapped[float | None] = mapped_column(Float)
 

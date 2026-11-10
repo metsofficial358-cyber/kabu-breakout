@@ -21,6 +21,11 @@ log = logging.getLogger(__name__)
 UA = {"User-Agent": "Mozilla/5.0 (kabu-breakout screener)"}
 
 
+def is_foreign(raw: str | None) -> bool:
+    """「プライム（外国株式）」など、外国会社の株式（JDR を含む）。"""
+    return "外国株式" in str(raw or "")
+
+
 def map_market(raw: str) -> str:
     s = str(raw or "")
     if "PRO Market" in s:
@@ -80,14 +85,14 @@ def parse_list(df: pd.DataFrame) -> pd.DataFrame:
 def upsert_stocks(db: Session, parsed: pd.DataFrame) -> dict[str, int]:
     now = datetime.now()
     rows = [
-        {"code": r.code, "name": r.name, "market": r.market, "sector33": r.sector33,
-         "is_active": True, "updated_at": now}
+        {"code": r.code, "name": r.name, "market": r.market, "market_raw": r.market_raw,
+         "sector33": r.sector33, "is_active": True, "updated_at": now}
         for r in parsed.itertuples()
     ]
     stmt = insert(Stock).values(rows)
     stmt = stmt.on_conflict_do_update(
         index_elements=["code"],
-        set_={k: stmt.excluded[k] for k in ("name", "market", "sector33", "is_active", "updated_at")},
+        set_={k: stmt.excluded[k] for k in ("name", "market", "market_raw", "sector33", "is_active", "updated_at")},
     )
     db.execute(stmt)
     # 一覧から消えた銘柄は非アクティブに

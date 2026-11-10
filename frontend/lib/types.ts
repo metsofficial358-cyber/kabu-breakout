@@ -21,6 +21,8 @@ export interface ScreenItem {
   turnover_avg25: number | null;
   updated_today: boolean | null;
   score: number | null;
+  range20_pct?: number | null;
+  is_foreign?: boolean;
   spark?: number[] | null;
 }
 
@@ -73,6 +75,10 @@ export interface Filters {
   above_ma75: boolean;
   min_turnover: number;
   include_etf: boolean;
+  include_reit: boolean;
+  include_other: boolean;
+  include_foreign: boolean;
+  exclude_pinned: boolean;
   include_updated: boolean;
   sort: SortKey;
   order: Order;

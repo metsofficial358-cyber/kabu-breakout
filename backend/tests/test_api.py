@@ -16,6 +16,11 @@ from app.providers.base import FetchResult, PriceProvider
 from tests.conftest import T, make_df, uptrend_near_high
 
 
+RAW = {"prime": "プライム（内国株式）", "standard": "スタンダード（内国株式）", "growth": "グロース（内国株式）",
+       "etf": "ETF・ETN", "reit": "REIT・ベンチャーファンド・カントリーファンド・インフラファンド",
+       "other": "PRO Market", "foreign": "プライム（外国株式）"}
+
+
 def series():
     return {
         "1001": ("prime", uptrend_near_high(n=300, dist=3.0)),          # 抽出
@@ -23,6 +28,9 @@ def series():
         "1003": ("standard", uptrend_near_high(n=300, dist=4.0, vol_mult=1.2)),  # 出来高不足
         "1004": ("etf", uptrend_near_high(n=300, dist=2.0)),            # ETF
         "130A": ("growth", make_df([100.0] * 300)),                     # 横ばい（距離 0.5%）
+        "1005": ("reit", uptrend_near_high(n=300, dist=2.5)),           # REIT
+        "1006": ("other", uptrend_near_high(n=300, dist=3.5)),          # PRO Market
+        "1007": ("foreign", uptrend_near_high(n=300, dist=1.5)),        # 外国株（市場区分はプライム）
     }
 
 
@@ -54,8 +62,9 @@ def client():
         for m in (ScreenResult, DailyPrice, FetchError, Run, Stock):
             db.execute(delete(m))
         for code, (market, _) in series().items():
-            db.add(Stock(code=code, name=f"銘柄{code}", market=market, sector33="テスト",
-                         is_active=True, updated_at=jobs.now_jst()))
+            db.add(Stock(code=code, name=f"銘柄{code}", market="prime" if market == "foreign" else market,
+                         sector33="テスト",
+                         market_raw=RAW[market], is_active=True, updated_at=jobs.now_jst()))
         db.commit()
     cache.clear()
     runner.provider_factory = lambda: FakeProvider(series(), fail=("9999",))
@@ -88,7 +97,7 @@ def test_screen_empty_before_first_run(client):
 def test_run_and_screen(client):
     run_once(client)
     st = client.get("/api/refresh/status").json()
-    assert st["status"] == "success" and st["processed"] == st["total"] == 5
+    assert st["status"] == "success" and st["processed"] == st["total"] == 8
     r = client.get("/api/screen").json()
     assert r["run_date"] == T.isoformat()
     assert [i["code"] for i in r["items"]] == ["1002", "1001"]           # 距離の昇順
@@ -103,6 +112,13 @@ def test_screen_params(client):
     g = lambda **q: [i["code"] for i in client.get("/api/screen", params=q).json()["items"]]  # noqa: E731
     assert g(market="growth") == ["1002"]
     assert g(include_etf="true") == ["1002", "1004", "1001"]
+    assert g(include_reit="true") == ["1002", "1005", "1001"]
+    assert g(include_other="true") == ["1002", "1001", "1006"]
+    assert g(include_foreign="true") == ["1002", "1007", "1001"]
+    assert g(include_etf="true", include_reit="true", include_other="true", include_foreign="true") == [
+        "1002", "1007", "1004", "1005", "1001", "1006"]
+    item = client.get("/api/screen", params={"include_foreign": "true"}).json()["items"][1]
+    assert item["is_foreign"] is True and item["range20_pct"] > 5
     assert g(vol_filter="false") == ["1002", "1001", "1003"]
     assert g(max_dist=2) == ["1002"]
     assert g(sort="score", order="desc") == ["1002", "1001"]
@@ -132,7 +148,7 @@ def test_refresh_lock_and_progress(client):
     r2 = client.post("/api/refresh")
     assert r2.status_code == 409 and r2.json()["run_id"] == r1.json()["run_id"]   # 二重起動しない
     st = client.get("/api/refresh/status").json()
-    assert st["running"] and st["phase"] == "prices" and st["total"] == 5
+    assert st["running"] and st["phase"] == "prices" and st["total"] == 8
     gate.set()
     st = wait_done(client)
     assert st["status"] == "success"
@@ -150,7 +166,8 @@ def test_lock_across_processes(client):
 
 def test_fetch_errors_recorded(client):
     with SessionLocal() as db:
-        db.add(Stock(code="9999", name="x", market="prime", is_active=True, updated_at=jobs.now_jst()))
+        db.add(Stock(code="9999", name="x", market="prime", market_raw="プライム（内国株式）",
+                     is_active=True, updated_at=jobs.now_jst()))
         db.commit()
     run_id = run_once(client)
     with SessionLocal() as db:
@@ -199,6 +216,7 @@ def test_screen_is_fast_with_full_universe(client):
     for i in range(4400):
         code = f"{2000 + i}"
         stocks.append({"code": code, "name": code, "market": "prime", "sector33": None,
+                       "market_raw": "プライム（内国株式）",
                        "is_active": True, "updated_at": jobs.now_jst()})
         rows.append({"run_date": T, "code": code, "close": 100.0, "change_pct": 1.0, "ytd_high": 102.0 + i % 10,
                      "ytd_high_date": date(2026, 9, 1), "dist_pct": (i % 100) / 10, "volume": 10**6,

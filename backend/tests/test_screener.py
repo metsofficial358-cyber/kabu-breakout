@@ -163,3 +163,57 @@ def test_market_filter_and_sort():
     assert list(apply_filters(res, ScreenParams(market="growth"))["code"]) == ["B"]
     assert list(apply_filters(res, ScreenParams(sort="score", order="desc"))["code"]) == ["B", "A"]
     assert len(apply_filters(res, ScreenParams(include_etf=True, limit=1))) == 1
+
+
+# ---- 追加の除外条件：値動きが止まった銘柄（TOB 等）・ETF/REIT/PRO Market の区別・外国株
+def tob_pinned():
+    """上昇後、TOB 発表で買付価格 1,000 円付近に張り付いた銘柄（値幅 0.5% 未満）。"""
+    closes = [700 + 2 * i for i in range(100)] + [995.0, 996.0, 995.5, 996.0] * 5   # 120本
+    highs = [c + 3 for c in closes[:100]] + [c + 1.0 for c in closes[100:]]
+    highs[95] = 1001.0                                         # 年初来高値（発表日の上ヒゲ）
+    vols = [2_000_000] * 119 + [6_000_000]                     # 指数除外などで出来高が急増
+    df = make_df(closes, volumes=vols, highs=highs)
+    df["low"] = [c - 3 for c in closes[:100]] + [c - 1.0 for c in closes[100:]]
+    return df
+
+
+def test_pinned_stock_is_excluded_by_default():
+    df = tob_pinned()
+    r = compute_indicators("9110", df, T)
+    assert 0 < r["dist_pct"] < 1 and r["vol_ratio"] >= 1.5 and r["close"] > r["ma75"]
+    assert r["range20_pct"] < 1.0                              # (997 - 994) / 996 ≈ 0.3%
+    assert screen({"9110": df}).empty
+    assert len(screen({"9110": df}, sp=ScreenParams(exclude_pinned=False))) == 1
+    # 通常の銘柄の値幅は十分大きく、除外されない
+    assert compute_indicators("1111", uptrend_near_high(), T)["range20_pct"] > 5
+
+
+def test_pinned_threshold_and_unknown_range():
+    res = compute_all(pd.concat([tob_pinned().rename_axis("date").reset_index().assign(code="P")]), T)
+    res["market"] = "prime"
+    assert apply_filters(res, ScreenParams(pinned_range_pct=0.1)).shape[0] == 1   # 閾値を下げれば残る
+    res["range20_pct"] = None                                  # 旧版の結果（値幅なし）は除外しない
+    assert apply_filters(res, ScreenParams()).shape[0] == 1
+
+
+def test_etf_reit_other_are_separate_toggles():
+    dfs = {c: uptrend_near_high(dist=d) for c, d in (("S", 1.0), ("E", 2.0), ("R", 3.0), ("O", 4.0))}
+    long = pd.concat([d.rename_axis("date").reset_index().assign(code=c) for c, d in dfs.items()])
+    res = compute_all(long, T)
+    res["market"] = ["etf", "other", "reit", "prime"]          # code 順: E, O, R, S
+    codes = lambda **kw: list(apply_filters(res, ScreenParams(**kw))["code"])  # noqa: E731
+    assert codes() == ["S"]
+    assert codes(include_etf=True) == ["S", "E"]
+    assert codes(include_reit=True) == ["S", "R"]
+    assert codes(include_other=True) == ["S", "O"]
+    assert codes(include_etf=True, include_reit=True, include_other=True) == ["S", "E", "R", "O"]
+
+
+def test_foreign_stocks_excluded_by_default():
+    dfs = {"1773": uptrend_near_high(dist=1.0), "7203": uptrend_near_high(dist=2.0)}
+    long = pd.concat([d.rename_axis("date").reset_index().assign(code=c) for c, d in dfs.items()])
+    res = compute_all(long, T)
+    res["market"] = "prime"
+    res["is_foreign"] = [True, False]
+    assert list(apply_filters(res, ScreenParams())["code"]) == ["7203"]
+    assert list(apply_filters(res, ScreenParams(include_foreign=True))["code"]) == ["1773", "7203"]

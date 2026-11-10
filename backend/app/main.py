@@ -20,6 +20,7 @@ from .jobs import AlreadyRunning, Progress, runner
 from .models import DailyPrice, Run, ScreenResult, Stock
 from .schemas import ChartResponse, Health, RefreshStarted, RefreshStatus, ScreenResponse
 from .screener import RESULT_COLUMNS, ScreenParams, apply_filters
+from .universe import is_foreign
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -38,13 +39,15 @@ class ResultCache:
         with self._lock:
             if run_date in self._data:
                 return self._data[run_date]
-        q = (select(ScreenResult, Stock.name, Stock.market, Stock.sector33)
+        q = (select(ScreenResult, Stock.name, Stock.market, Stock.sector33, Stock.market_raw)
              .join(Stock, Stock.code == ScreenResult.code, isouter=True)
              .where(ScreenResult.run_date == run_date))
-        rows = [{**{c: getattr(sr, c) for c in RESULT_COLUMNS}, "name": n, "market": m, "sector33": s}
-                for sr, n, m, s in db.execute(q)]
-        df = pd.DataFrame(rows, columns=[*RESULT_COLUMNS, "name", "market", "sector33"])
-        for c in ("dist_pct", "score", "vol_ratio", "close", "ma25", "ma75", "turnover_avg25", "change_pct"):
+        rows = [{**{c: getattr(sr, c) for c in RESULT_COLUMNS}, "name": n, "market": m, "sector33": s,
+                 "is_foreign": is_foreign(raw)}
+                for sr, n, m, s, raw in db.execute(q)]
+        df = pd.DataFrame(rows, columns=[*RESULT_COLUMNS, "name", "market", "sector33", "is_foreign"])
+        for c in ("dist_pct", "score", "vol_ratio", "close", "ma25", "ma75", "turnover_avg25", "change_pct",
+                  "range20_pct"):
             df[c] = pd.to_numeric(df[c], errors="coerce")
         with self._lock:
             self._data[run_date] = df
@@ -115,6 +118,11 @@ def screen(
     above_ma75: bool = True,
     min_turnover: float = Query(100_000_000, ge=0),
     include_etf: bool = False,
+    include_reit: bool = False,
+    include_other: bool = False,
+    include_foreign: bool = False,
+    exclude_pinned: bool = True,
+    pinned_range_pct: float | None = Query(None, ge=0, le=100),
     include_updated: bool = False,
     sort: Literal["dist", "vol_ratio", "change", "score"] = "dist",
     order: Literal["asc", "desc"] = "asc",
@@ -131,8 +139,11 @@ def screen(
     df = cache.get(db, run.run_date)
     sp = ScreenParams(market=market, max_dist=max_dist, vol_filter=vol_filter, min_vol_ratio=min_vol_ratio,
                       above_ma25=above_ma25, above_ma75=above_ma75, min_turnover=min_turnover,
-                      include_etf=include_etf, include_updated=include_updated, sort=sort, order=order,
-                      limit=None)
+                      include_etf=include_etf, include_reit=include_reit, include_other=include_other,
+                      include_foreign=include_foreign, exclude_pinned=exclude_pinned,
+                      pinned_range_pct=(pinned_range_pct if pinned_range_pct is not None
+                                        else get_settings().pinned_range_pct),
+                      include_updated=include_updated, sort=sort, order=order, limit=None)
     hit = apply_filters(df, sp)
     count = len(hit)
     hit = hit.head(limit)

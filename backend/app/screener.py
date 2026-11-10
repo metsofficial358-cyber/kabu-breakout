@@ -18,7 +18,7 @@ NON_STOCK_MARKETS = ("etf", "reit", "other")
 
 RESULT_COLUMNS = [
     "code", "close", "change_pct", "ytd_high", "ytd_high_date", "dist_pct", "volume",
-    "vol_ratio", "ma25", "ma75", "turnover_avg25", "updated_today", "score",
+    "vol_ratio", "ma25", "ma75", "turnover_avg25", "updated_today", "score", "range20_pct",
 ]
 
 
@@ -30,12 +30,13 @@ class CalcParams:
     ma_long: int = 75
     turnover_avg_days: int = 25
     min_history_days: int = 75
+    pinned_days: int = 20
 
     @classmethod
     def from_settings(cls) -> CalcParams:
         s = config.get_settings()
         return cls(s.ytd_prev_year_until_month, s.vol_avg_days, s.ma_short, s.ma_long,
-                   s.turnover_avg_days, s.min_history_days)
+                   s.turnover_avg_days, s.min_history_days, s.pinned_days)
 
 
 def breakout_score(dist_pct: float, vol_ratio: float | None, ma25: float | None, ma75: float | None) -> float:
@@ -101,6 +102,10 @@ def compute_indicators(code: str, df: pd.DataFrame, t: date, p: CalcParams | Non
     out["ma75"] = _num(closes.iloc[-p.ma_long:].mean())
     tail = df.iloc[-p.turnover_avg_days:]
     out["turnover_avg25"] = _num((tail["close"] * tail["volume"].fillna(0)).mean())
+    # 直近 N 営業日の値幅（TOB の買付価格への張り付きなど、値動きが止まった銘柄の判定用）
+    win = df.iloc[-p.pinned_days:]
+    low = win["low"].min() if "low" in win and win["low"].notna().any() else win["close"].min()
+    out["range20_pct"] = _num((win["high"].max() - low) / close_t * 100) if close_t else None
     out["score"] = breakout_score(dist, out["vol_ratio"], out["ma25"], out["ma75"])
     return out
 
@@ -129,16 +134,23 @@ class ScreenParams:
     above_ma25: bool = True
     above_ma75: bool = True
     min_turnover: float = 100_000_000
-    include_etf: bool = False
+    include_etf: bool = False        # ETF・ETN
+    include_reit: bool = False       # REIT・インフラファンド等
+    include_other: bool = False      # PRO Market・出資証券など（東証の3市場以外）
+    include_foreign: bool = False    # 外国株（JDR を含む）
+    exclude_pinned: bool = True      # 値動きが止まった銘柄（TOB 等）を除外
+    pinned_range_pct: float = 1.0
     include_updated: bool = False
     sort: str = "dist"
     order: str = "asc"
     limit: int | None = 200
 
 
-def allowed_markets(market: str, include_etf: bool) -> tuple[str, ...]:
+def allowed_markets(market: str, include_etf: bool = False, include_reit: bool = False,
+                    include_other: bool = False) -> tuple[str, ...]:
     if market == "all":
-        return STOCK_MARKETS + (NON_STOCK_MARKETS if include_etf else ())
+        extra = tuple(m for m, on in (("etf", include_etf), ("reit", include_reit), ("other", include_other)) if on)
+        return STOCK_MARKETS + extra
     return (market,)
 
 
@@ -148,7 +160,11 @@ def apply_filters(df: pd.DataFrame, sp: ScreenParams) -> pd.DataFrame:
         return df
     m = df["dist_pct"].notna() & df["score"].notna()  # データ不足は常に除外
     if "market" in df.columns:
-        m &= df["market"].isin(allowed_markets(sp.market, sp.include_etf))
+        m &= df["market"].isin(allowed_markets(sp.market, sp.include_etf, sp.include_reit, sp.include_other))
+    if not sp.include_foreign and "is_foreign" in df.columns:
+        m &= ~df["is_foreign"].fillna(False).astype(bool)
+    if sp.exclude_pinned and "range20_pct" in df.columns:
+        m &= ~(df["range20_pct"] < sp.pinned_range_pct)  # 値幅が不明（NULL）の銘柄は除外しない
     near = (df["dist_pct"] > 0) & (df["dist_pct"] <= sp.max_dist) & ~df["updated_today"].fillna(False).astype(bool)
     if sp.include_updated:
         near |= df["updated_today"].fillna(False).astype(bool)
