@@ -3,7 +3,7 @@ import Providers from "@/components/Providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "年初来高値 更新間近スクリーナー",
+  title: "タカネパトロール君｜年初来高値 更新間近",
   description: "年初来高値まであと数%で、出来高を伴って更新しそうな日本株を毎営業日に抽出します。",
 };
 

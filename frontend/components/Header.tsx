@@ -30,7 +30,10 @@ export default function Header({ runDate, updatedAt, market, onMarket, onRefresh
       <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <TrendingUp className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
-          <h1 className="truncate text-base font-bold sm:text-lg">年初来高値 更新間近</h1>
+          <h1 className="truncate text-base font-bold sm:text-lg">
+            <span aria-hidden>🚓 </span>タカネパトロール君
+          </h1>
+          <span className="hidden text-xs text-slate-500 sm:inline dark:text-slate-400">年初来高値 更新間近</span>
         </div>
         <UpdatedBadge runDate={runDate} updatedAt={updatedAt} />
         <div className="ml-auto flex items-center gap-2">
